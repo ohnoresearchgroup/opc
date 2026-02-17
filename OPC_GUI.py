@@ -295,7 +295,7 @@ class OPC_GUI:
         self.fig, self.ax = plt.subplots(figsize=(8,4))
         self.ax.set_title("Total Concentration Over Time")
         self.ax.set_xlabel("Time")
-        self.ax.set_ylabel("total_conc")
+        self.ax.set_ylabel("total_conc [# cm$^-3$] ")
         self.ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
 
         # Create an empty line for live updating
@@ -313,9 +313,9 @@ class OPC_GUI:
 
         self.sd_fig, self.sd_ax = plt.subplots(figsize=(7,5))
 
-        self.sd_ax.set_title("Concentration vs Diameter")
-        self.sd_ax.set_xlabel("Bin Diameter (nm)")
-        self.sd_ax.set_ylabel("Concentration")
+        self.sd_ax.set_title("Size Distribution")
+        self.sd_ax.set_xlabel("Bin Diameter [nm]")
+        self.sd_ax.set_ylabel("Conc [dN/dlogD]")
         self.sd_ax.set_xscale("log")
 
         # Empty lines for live update
