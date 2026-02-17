@@ -3,6 +3,8 @@
 import serial
 import threading
 import pandas as pd
+import numpy as np
+import re
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox
@@ -33,9 +35,28 @@ class OPC:
 
         self.current_df = pd.DataFrame()
         self.current_idx = 0
+        
+        self.bin_diams = np.array([166.4, 169.2, 172.0, 174.8, 177.8, 180.8, 
+                                   183.8, 186.8, 190.0, 193.2, 196.4, 199.7, 
+                                   203.0, 206.4, 209.9, 213.4, 217.0, 220.6, 
+                                   224.3, 228.0, 231.8, 235.7, 239.7, 243.7, 
+                                   247.7, 251.9, 256.1, 260.4, 264.8, 269.2, 
+                                   273.8, 278.4, 283.2, 288.2, 293.2, 298.5, 
+                                   303.9, 309.6, 315.6, 321.9, 328.6, 335.8, 
+                                   343.5, 351.8, 360.9, 370.7, 381.6, 393.6, 
+                                   407.0, 422.0, 438.9, 457.9, 479.5, 504.0, 
+                                   532.0, 564.1, 600.9, 643.2, 692.2, 748.6, 
+                                   814.0, 889.8, 977.7, 1079.8, 1198.6, 1336.8, 
+                                   1497.8, 1685.4, 1904.1, 2159.3, 2456.9, 2805.2])
+        
+        self.current_concs = np.array([])
+        self.sum_concs = np.array([])
+        self.ave_concs = np.array([])
 
     def _reader_loop(self):
+        #data to hold everything that comes in
         data = {}
+        concs = np.array([])
         while not self._stop_event.is_set():
             raw = self.ser.readline().decode("utf-8", errors="ignore")
             for line in raw.split("\r"):
@@ -54,20 +75,41 @@ class OPC:
                     except ValueError:
                         pass
                     data[key] = value
+                    
+                    #check if it is one of the concentrations
+                    if re.fullmatch(r'c-?\d+', key):
+                        #append it to the concentrations
+                        concs = np.append(concs,value)
+                    
+                
 
                 if "c72=" in line:
+                    # initialize sum array on first scan
+                    if self.current_idx == 0:
+                        self.sum_concs = concs.copy()
+                    else:
+                        self.sum_concs = self.sum_concs + concs
+                    
+                    self.current_concs = concs.copy()
+                    self.current_idx += 1
+                    self.ave_concs = self.sum_concs / self.current_idx
+                    
+
+            
+                    
                     # prepend timestamp
                     data = {"timestamp": datetime.now(), **data}
                     row = pd.DataFrame([data])
                     row.index = [self.current_idx]
-                    self.current_idx += 1
                     self.current_df = pd.concat([self.current_df, row])
 
                     # callback to GUI
                     if self.message_callback:
                         self.message_callback(row)
 
+                    #reset for next scan
                     data = {}
+                    concs = np.array([])
 
     def start_read(self):
         self.ser.reset_input_buffer()
@@ -79,7 +121,6 @@ class OPC:
 
     def stop_read(self):
         self._stop_event.set()
-        self._thread.join()
 
     def close(self):
         self.stop_read()
@@ -108,6 +149,14 @@ class OPC_GUI:
         self.ax = None
         self.canvas = None
         self.line = None  # Line2D object for smooth updating
+        
+        # Size distribution plot
+        self.sd_window = None
+        self.sd_fig = None
+        self.sd_ax = None
+        self.sd_canvas = None
+        self.current_line = None
+        self.ave_line = None
 
         self._build_ui()
 
@@ -187,6 +236,7 @@ class OPC_GUI:
             self.line = None
 
             self.open_plot_window()  # Create a new plot window for this session
+            self.open_sd_window()
 
             self.opc = OPC(port, message_callback=self.handle_message)
             self.opc.start_read()
@@ -226,6 +276,10 @@ class OPC_GUI:
         if "total_conc" in row_df.columns:
             self.plot_data = pd.concat([self.plot_data, row_df[["timestamp", "total_conc"]]], ignore_index=True)
             self.update_plot(row_df.iloc[0]["timestamp"], row_df.iloc[0]["total_conc"])
+            
+        # Update size distribution plot if data available
+        if self.opc and len(self.opc.current_concs) > 0:
+            self.update_sd_plot()
 
     # =======================
     # Plotting functions
@@ -250,6 +304,30 @@ class OPC_GUI:
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.plot_window)
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
+        
+        
+    def open_sd_window(self):
+        self.sd_window = tk.Toplevel(self.root)
+        self.sd_window.title("Size Distribution")
+        self.sd_window.geometry("700x500")
+
+        self.sd_fig, self.sd_ax = plt.subplots(figsize=(7,5))
+
+        self.sd_ax.set_title("Concentration vs Diameter")
+        self.sd_ax.set_xlabel("Bin Diameter (nm)")
+        self.sd_ax.set_ylabel("Concentration")
+        self.sd_ax.set_xscale("log")
+
+        # Empty lines for live update
+        self.current_line = Line2D([], [], label="Current")
+        self.ave_line = Line2D([], [], label="Average")
+
+        self.sd_ax.add_line(self.current_line)
+        self.sd_ax.add_line(self.ave_line)
+        self.sd_ax.legend()
+
+        self.sd_canvas = FigureCanvasTkAgg(self.sd_fig, master=self.sd_window)
+        self.sd_canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def update_plot(self, timestamp, total_conc):
         if self.plot_window is None or not tk.Toplevel.winfo_exists(self.plot_window):
@@ -270,6 +348,26 @@ class OPC_GUI:
 
         # Redraw canvas
         self.canvas.draw()
+        
+    def update_sd_plot(self):
+        if self.sd_window is None or not tk.Toplevel.winfo_exists(self.sd_window):
+            return
+
+        x = self.opc.bin_diams
+        y_current = self.opc.current_concs
+        y_ave = self.opc.ave_concs
+
+        # Safety check for matching sizes
+        if len(x) != len(y_current):
+            return
+
+        self.current_line.set_data(x, y_current)
+        self.ave_line.set_data(x, y_ave)
+
+        self.sd_ax.relim()
+        self.sd_ax.autoscale_view()
+
+        self.sd_canvas.draw()
 
 
 # =======================
