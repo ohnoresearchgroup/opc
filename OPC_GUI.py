@@ -25,7 +25,7 @@ class OPC:
             stopbits=serial.STOPBITS_ONE,
             parity=serial.PARITY_NONE,
             xonxoff=True,
-            timeout=5
+            timeout=1
         )
         self.ser.reset_input_buffer()
         self.ser.reset_output_buffer()
