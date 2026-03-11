@@ -28,9 +28,15 @@ class OPCdata():
         
         
     def plot_mean_distribution(self):
-        plt.plot(self.bin_diams,self.mean_distribution)
-        plt.xscale("log")
-        plt.ylabel("dN/dlogD")
-        plt.xlabel("Diameter [nm]")
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        
+        ax.plot(self.bin_diams,self.mean_distribution)
+        ax.set_xscale("log")
+        ax.set_ylabel("dN/dlogD")
+        ax.set_xlabel("Diameter [nm]")
+        fig.tight_layout()
+        
+        return fig, ax
 
     
