@@ -36,7 +36,7 @@ class OPCdata():
         ax.set_ylabel("dN/dlogD")
         ax.set_xlabel("Diameter [nm]")
         fig.tight_layout()
-	fig.set_size_inches(4, 4)
+        fig.set_size_inches(4, 4)
         
         return fig, ax
 
